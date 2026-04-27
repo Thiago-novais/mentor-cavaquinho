@@ -11,7 +11,8 @@ import streamlit as st
 import time
 
 # --- Configurações de Negócio ---
-NOTAS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'G', 'G#', 'A', 'A#', 'B']
+# Array corrigido com as 12 notas musicais
+NOTAS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 AFINACAO = ['D', 'G', 'B', 'D'] 
 NUM_CASAS = 15 
 
@@ -25,7 +26,6 @@ def gerar_svg_braco(corda_alvo, casa_alvo, nota_alvo, dedo_alvo):
     largura_total = (NUM_CASAS * largura_casa) + (2 * margem_x)
     altura_total = (3 * altura_corda) + (2 * margem_y)
     
-    # Coordenadas da Nota Alvo
     # Mapeamento de Corda para Y (Corda 1 no topo)
     mapa_y = {"Corda 1": margem_y, "Corda 2": margem_y + altura_corda, 
               "Corda 3": margem_y + (2 * altura_corda), "Corda 4": margem_y + (3 * altura_corda)}
@@ -36,16 +36,15 @@ def gerar_svg_braco(corda_alvo, casa_alvo, nota_alvo, dedo_alvo):
     # Início do SVG
     svg = f'<svg width="100%" viewBox="0 0 {largura_total} {altura_total}" xmlns="http://www.w3.org/2000/svg">'
     
-    # Desenho do Braço (Madeira/Fundo)
+    # Desenho do Braço
     svg += f'<rect x="{margem_x}" y="{margem_y}" width="{NUM_CASAS * largura_casa}" height="{3 * altura_corda}" fill="#3d2b1f" rx="4"/>'
     
-    # Desenho dos Trastes (Linhas Verticais)
+    # Desenho dos Trastes (Linhas Verticais) e Numeração
     for c in range(NUM_CASAS + 1):
         x = margem_x + (c * largura_casa)
         cor_traste = "#ffd700" if c == 0 else "#b0b0b0"
         largura_traste = 4 if c == 0 else 1
         svg += f'<line x1="{x}" y1="{margem_y}" x2="{x}" y2="{margem_y + 3 * altura_corda}" stroke="{cor_traste}" stroke-width="{largura_traste}" />'
-        # Números das casas
         svg += f'<text x="{x - largura_casa/2}" y="{margem_y - 10}" font-family="Arial" font-size="12" fill="#888" text-anchor="middle">{c if c > 0 else ""}</text>'
 
     # Desenho das Cordas (Linhas Horizontais)
@@ -54,46 +53,30 @@ def gerar_svg_braco(corda_alvo, casa_alvo, nota_alvo, dedo_alvo):
         svg += f'<line x1="{margem_x}" y1="{y}" x2="{margem_x + NUM_CASAS * largura_casa}" y2="{y}" stroke="#e0e0e0" stroke-width="{2 + i*0.5}" />'
 
     # Desenho da Nota Alvo (Onde colocar o dedo)
-    cor_nota = "#e74c3c" # Vermelho
+    cor_nota = "#e74c3c"
     svg += f'<circle cx="{pos_x}" cy="{pos_y}" r="14" fill="{cor_nota}" stroke="white" stroke-width="2" />'
-    svg += f'<text x="{pos_x}" y="{pos_y + 5}" font-family="Arial" font-size="12" font-weight="bold" fill="white" text-anchor="middle">{nota_alvo}|{dedo_alvo}</text>'
+    # Fonte ligeiramente reduzida para caber notas com sustenido (ex: C#|3)
+    svg += f'<text x="{pos_x}" y="{pos_y + 4}" font-family="Arial" font-size="11" font-weight="bold" fill="white" text-anchor="middle">{nota_alvo}|{dedo_alvo}</text>'
     
     svg += '</svg>'
     return svg
 
 def gerar_caminho_escala(tom):
-    corda3_notas = [NOTAS[(NOTAS.index('G') + c) % 11] for c in range(NUM_CASAS + 1)] # Ajustado para lista de 11/12
-    # Simplificação para o exemplo: Busca o shape na Corda 3
-    try: casa_base = corda3_notas.index(tom)
-    except: casa_base = 5 
+    # 1. Encontra a Casa Base na Corda 3
+    corda3_notas = [NOTAS[(NOTAS.index('G') + c) % 12] for c in range(NUM_CASAS + 1)]
+    try: 
+        casa_base = corda3_notas.index(tom)
+    except ValueError: 
+        casa_base = 5 
     
-    if casa_base < 2: casa_base += 12
+    if casa_base < 2: 
+        casa_base += 12
+        
+    # 2. Calcula as notas reais da escala escolhida (A CORREÇÃO ESTÁ AQUI)
+    intervalos = [0, 2, 4, 5, 7, 9, 11, 12]
+    idx_tom = NOTAS.index(tom)
+    notas_escala = [NOTAS[(idx_tom + i) % 12] for i in intervalos]
     
-    shape = [("Corda 3", 0, 1), ("Corda 3", 2, 3), ("Corda 2", 0, 1), ("Corda 2", 1, 2),
-             ("Corda 1", 0, 1), ("Corda 1", 2, 3), ("Corda 1", 4, 1), ("Corda 1", 5, 2)]
-    
-    return [(s[0], casa_base + s[1], "N", s[2]) for s in shape]
-
-# --- UI Streamlit ---
-st.set_page_config(page_title="Mentor de Cavaquinho Pro", layout="centered")
-st.title("🎸 Cavaquinho Pro v3.0")
-
-col1, col2, col3 = st.columns(3)
-tom_escolhido = col1.selectbox("Tom", ["C", "D", "E", "F", "G", "A", "B"])
-bpm = col2.number_input("BPM", 40, 140, 60, 5)
-repeticoes = col3.number_input("Ciclos", 1, 10, 2)
-
-if st.button("▶ Iniciar Treino Gráfico"):
-    caminho = gerar_caminho_escala(tom_escolhido)
-    painel = st.empty()
-    
-    for r in range(int(repeticoes)):
-        for p, (corda, casa, nota, dedo) in enumerate(caminho):
-            with painel.container():
-                st.subheader(f"Ciclo {r+1} | Nota {p+1}/8")
-                # Injeta o SVG dinâmico
-                svg_code = gerar_svg_braco(corda, casa, tom_escolhido, dedo)
-                st.write(svg_code, unsafe_allow_html=True)
-                st.info(f"Toque na **{corda}**, **Casa {casa}** com o dedo **{dedo}**.")
-            time.sleep(60/bpm)
-    painel.success("Treino concluído!")
+    # 3. Shape fechado padrão
+    shape = [
+        ("Corda 3", 0, 1), ("Corda 3", 2
