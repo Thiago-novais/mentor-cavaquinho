@@ -11,7 +11,6 @@ import streamlit as st
 import time
 
 # --- Configurações de Negócio ---
-# Array corrigido com as 12 notas musicais
 NOTAS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 AFINACAO = ['D', 'G', 'B', 'D'] 
 NUM_CASAS = 15 
@@ -27,8 +26,12 @@ def gerar_svg_braco(corda_alvo, casa_alvo, nota_alvo, dedo_alvo):
     altura_total = (3 * altura_corda) + (2 * margem_y)
     
     # Mapeamento de Corda para Y (Corda 1 no topo)
-    mapa_y = {"Corda 1": margem_y, "Corda 2": margem_y + altura_corda, 
-              "Corda 3": margem_y + (2 * altura_corda), "Corda 4": margem_y + (3 * altura_corda)}
+    mapa_y = {
+        "Corda 1": margem_y, 
+        "Corda 2": margem_y + altura_corda, 
+        "Corda 3": margem_y + (2 * altura_corda), 
+        "Corda 4": margem_y + (3 * altura_corda)
+    }
     
     pos_y = mapa_y[corda_alvo]
     pos_x = margem_x + (casa_alvo * largura_casa) - (largura_casa / 2) if casa_alvo > 0 else margem_x - 10
@@ -55,7 +58,6 @@ def gerar_svg_braco(corda_alvo, casa_alvo, nota_alvo, dedo_alvo):
     # Desenho da Nota Alvo (Onde colocar o dedo)
     cor_nota = "#e74c3c"
     svg += f'<circle cx="{pos_x}" cy="{pos_y}" r="14" fill="{cor_nota}" stroke="white" stroke-width="2" />'
-    # Fonte ligeiramente reduzida para caber notas com sustenido (ex: C#|3)
     svg += f'<text x="{pos_x}" y="{pos_y + 4}" font-family="Arial" font-size="11" font-weight="bold" fill="white" text-anchor="middle">{nota_alvo}|{dedo_alvo}</text>'
     
     svg += '</svg>'
@@ -72,11 +74,53 @@ def gerar_caminho_escala(tom):
     if casa_base < 2: 
         casa_base += 12
         
-    # 2. Calcula as notas reais da escala escolhida (A CORREÇÃO ESTÁ AQUI)
+    # 2. Calcula as notas reais da escala escolhida
     intervalos = [0, 2, 4, 5, 7, 9, 11, 12]
     idx_tom = NOTAS.index(tom)
     notas_escala = [NOTAS[(idx_tom + i) % 12] for i in intervalos]
     
-    # 3. Shape fechado padrão
+    # 3. Shape fechado padrão (tuplas fechadas corretamente)
     shape = [
-        ("Corda 3", 0, 1), ("Corda 3", 2
+        ("Corda 3", 0, 1), 
+        ("Corda 3", 2, 3), 
+        ("Corda 2", 0, 1), 
+        ("Corda 2", 1, 2),
+        ("Corda 1", 0, 1), 
+        ("Corda 1", 2, 3), 
+        ("Corda 1", 4, 1), 
+        ("Corda 1", 5, 2)
+    ]
+    
+    # 4. Associa a coordenada à nota correta que acabou de ser calculada
+    caminho = []
+    for passo in range(8):
+        corda, offset, dedo = shape[passo]
+        caminho.append((corda, casa_base + offset, notas_escala[passo], dedo))
+        
+    return caminho
+
+# --- UI Streamlit ---
+st.set_page_config(page_title="Mentor de Cavaquinho Pro", layout="centered")
+st.title("🎸 Cavaquinho Pro v3.1")
+
+col1, col2, col3 = st.columns(3)
+tom_escolhido = col1.selectbox("Tom", NOTAS)
+bpm = col2.number_input("BPM", 40, 140, 60, 5)
+repeticoes = col3.number_input("Ciclos", 1, 10, 2)
+
+if st.button("▶ Iniciar Treino Gráfico"):
+    caminho = gerar_caminho_escala(tom_escolhido)
+    painel = st.empty()
+    
+    for r in range(int(repeticoes)):
+        for p, (corda, casa, nota_real, dedo) in enumerate(caminho):
+            with painel.container():
+                st.subheader(f"Ciclo {r+1} | Nota {p+1}/8")
+                
+                # Injeta o SVG dinâmico
+                svg_code = gerar_svg_braco(corda, casa, nota_real, dedo)
+                st.write(svg_code, unsafe_allow_html=True)
+                
+                st.info(f"Toque a nota **{nota_real}** na **{corda}**, **Casa {casa}** com o dedo **{dedo}**.")
+            time.sleep(60/bpm)
+    painel.success("Treino concluído!")
