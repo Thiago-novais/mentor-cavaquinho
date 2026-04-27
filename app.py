@@ -10,12 +10,13 @@ Original file is located at
 import streamlit as st
 import time
 
-# Configurações Básicas
+# --- Configurações Técnicas e de Negócio ---
 NOTAS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-AFINACAO = ['D', 'G', 'B', 'D'] # Cordas 4, 3, 2, 1
+AFINACAO = ['D', 'G', 'B', 'D'] 
 NOME_DEDO = {1: "Indicador", 2: "Médio", 3: "Anelar", 4: "Mínimo"}
+NUM_CASAS = 17 # Aumentado para suportar o arraste até às escalas mais agudas
 
-def gerar_braco(num_casas=12):
+def gerar_braco(num_casas=NUM_CASAS):
     braco = {}
     for i in reversed(range(4)):
         nota_solta = AFINACAO[i]
@@ -23,59 +24,88 @@ def gerar_braco(num_casas=12):
         braco[f"Corda {4-i}"] = [NOTAS[(idx_inicial + casa) % 12] for casa in range(num_casas + 1)]
     return braco
 
-caminho_do_maior = [
-    ("Corda 3", 5, "C", 1),
-    ("Corda 3", 7, "D", 3),
-    ("Corda 2", 5, "E", 1),
-    ("Corda 2", 6, "F", 2),
-    ("Corda 1", 5, "G", 1),
-    ("Corda 1", 7, "A", 3),
-    ("Corda 1", 9, "B", 1),
-    ("Corda 1", 10, "C", 2)
-]
+def gerar_caminho_escala(tom_desejado):
+    # 1. Encontra onde a Tônica da escala "cai" na Corda 3 (G)
+    corda3_notas = [NOTAS[(NOTAS.index('G') + casa) % 12] for casa in range(NUM_CASAS + 1)]
+    casa_base = corda3_notas.index(tom_desejado)
+    
+    # Ajuste para manter o "shape fechado": se a casa for muito perto da pestana (<2), 
+    # jogamos para a oitava de cima para que os dedos tenham espaço.
+    if casa_base < 2:
+        casa_base += 12
 
-# Configuração da Página Web
+    # 2. Fórmula da Escala Maior (Intervalos)
+    intervalos = [0, 2, 4, 5, 7, 9, 11, 12]
+    idx_tom = NOTAS.index(tom_desejado)
+    notas_escala = [NOTAS[(idx_tom + i) % 12] for i in intervalos]
+
+    # 3. Matriz do Desenho (Corda, Distância da Tônica no eixo X, Dedo)
+    shape_base = [
+        ("Corda 3", 0, 1),
+        ("Corda 3", 2, 3),
+        ("Corda 2", 0, 1),
+        ("Corda 2", 1, 2),
+        ("Corda 1", 0, 1),
+        ("Corda 1", 2, 3),
+        ("Corda 1", 4, 1),
+        ("Corda 1", 5, 2)
+    ]
+
+    caminho = []
+    for passo in range(8):
+        corda, offset, dedo = shape_base[passo]
+        caminho.append((corda, casa_base + offset, notas_escala[passo], dedo))
+    
+    return caminho
+
+# --- Interface Web ---
 st.set_page_config(page_title="Mentor de Cavaquinho", layout="centered")
-st.title("🎸 Mentor de Cavaquinho v1.0")
-st.markdown("Treino de **Escala Maior (Shape Fechado)** guiado por metrônomo.")
+st.title("🎸 Mentor de Cavaquinho v2.0")
 
-# Controles de Interface
-bpm = st.slider("Velocidade do Metrônomo (BPM)", 40, 120, 60)
+# Organizar os controlos em colunas para uma UI mais limpa
+col1, col2, col3 = st.columns(3)
+tom_escolhido = col1.selectbox("Tom da Escala", NOTAS, index=0)
+bpm = col2.number_input("BPM (Velocidade)", min_value=40, max_value=140, value=60, step=5)
+repeticoes = col3.number_input("Repetições (Ciclos)", min_value=1, max_value=20, value=2)
+
 intervalo = 60 / bpm
-dados_braco = gerar_braco(num_casas=12)
+dados_braco = gerar_braco()
+caminho_dinamico = gerar_caminho_escala(tom_escolhido)
 
-# Botão de Ação
-if st.button("▶ Iniciar Prática"):
-    # Cria um espaço vazio na tela que será sobrescrito a cada loop
+st.markdown(f"**Escala de {tom_escolhido} Maior** configurada para **{repeticoes} ciclo(s)** a **{bpm} BPM**.")
+
+if st.button("▶ Iniciar Treino"):
     painel = st.empty()
-
-    # Loop do exercício
-    for passo, (corda_alvo, casa_alvo, nota_alvo, dedo_alvo) in enumerate(caminho_do_maior):
-        with painel.container():
-            st.markdown(f"### ⏱️ Passo {passo + 1}/8")
-            st.markdown(f"**Alvo:** Nota `{nota_alvo}` na **{corda_alvo}**, Casa **{casa_alvo}**")
-            st.markdown(f"**Dedo:** {dedo_alvo} ({NOME_DEDO[dedo_alvo]})")
-
-            # Montando o Grid em formato de texto para manter o alinhamento
-            grid = "        |"
-            for casa in range(13):
-                grid += f"  {casa:^2}  |"
-            grid += "\n" + "-" * len(grid) + "\n"
-
-            for corda, notas_na_corda in dados_braco.items():
-                linha = f"{corda} |"
-                for casa, nota in enumerate(notas_na_corda):
-                    if corda == corda_alvo and casa == casa_alvo:
-                        texto_celula = f"{nota}|{dedo_alvo}"
-                        linha += f"[{texto_celula:^4}]|"
-                    else:
-                        linha += " ---- |"
-                grid += linha + "\n"
-
-            # st.text preserva a fonte monoespaçada, ideal para matrizes/tablaturas
-            st.text(grid)
-
-        # Pausa pelo tempo do BPM antes de atualizar a tela novamente
-        time.sleep(intervalo)
-
+    
+    # Motor de Repetição
+    for rodada in range(int(repeticoes)):
+        for passo, (corda_alvo, casa_alvo, nota_alvo, dedo_alvo) in enumerate(caminho_dinamico):
+            with painel.container():
+                st.markdown(f"### 🔁 Rodada {rodada + 1}/{repeticoes} | ⏱️ Passo {passo + 1}/8")
+                st.markdown(f"**Alvo:** Nota `{nota_alvo}` na **{corda_alvo}**, Casa **{casa_alvo}**")
+                st.markdown(f"**Dedo:** {dedo_alvo} ({NOME_DEDO[dedo_alvo]})")
+                
+                # Montar o cabeçalho do Grid
+                grid = "        |"
+                for casa in range(NUM_CASAS + 1):
+                    grid += f"  {casa:^2}  |"
+                grid += "\n" + "-" * len(grid) + "\n"
+                
+                # Preencher as cordas com a nota alvo destacada
+                for corda, notas_na_corda in dados_braco.items():
+                    linha = f"{corda} |"
+                    for casa, nota in enumerate(notas_na_corda):
+                        if corda == corda_alvo and casa == casa_alvo:
+                            texto_celula = f"{nota}|{dedo_alvo}"
+                            linha += f"[{texto_celula:^4}]|"
+                        else:
+                            linha += " ---- |"
+                    grid += linha + "\n"
+                
+                st.text(grid)
+            
+            # Aguarda a próxima batida do metrônomo
+            time.sleep(intervalo)
+            
+    painel.success("✅ Treino concluído! Manter a constância é o segredo.")
     painel.success("✅ Exercício finalizado! Respire e clique novamente para repetir.")
